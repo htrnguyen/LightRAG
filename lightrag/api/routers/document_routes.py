@@ -129,7 +129,26 @@ def sanitize_filename(filename: str, input_dir: Path) -> str:
     return clean_name
 
 
-# ScanResponse model removed
+class ScanResponse(BaseModel):
+    """Response model for directory scanning operation
+
+    Attributes:
+        status: Status of the scanning operation
+        message: Message describing the scan result
+    """
+
+    status: Literal["success", "failure"] = Field(
+        description="Status of the scanning operation"
+    )
+    message: str = Field(description="Message describing the scan result")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "status": "success",
+                "message": "Scanning process started in background",
+            }
+        }
 
 
 class ReprocessResponse(BaseModel):
@@ -1958,7 +1977,18 @@ def create_document_routes(
     # Create combined auth dependency for document routes
     combined_auth = get_combined_auth_dependency(api_key)
 
-    # /scan endpoint removed
+    @router.post(
+        "/scan", response_model=ScanResponse, dependencies=[Depends(combined_auth)]
+    )
+    async def scan_input_dir(background_tasks: BackgroundTasks):
+        """
+        Scan the input directory for new files and index them.
+        """
+        track_id = generate_track_id("scan")
+        background_tasks.add_task(run_scanning_process, rag, doc_manager, track_id)
+        return ScanResponse(
+            status="success", message="Scanning process started in background"
+        )
 
     @router.post(
         "/upload", response_model=InsertResponse, dependencies=[Depends(combined_auth)]

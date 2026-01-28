@@ -8,47 +8,39 @@ import time
 import logging
 from contextvars import ContextVar
 from typing import Any, Dict, List, Optional, Union, TypeVar, Generic
-
 from lightrag.exceptions import PipelineNotInitializedError
+from lightrag.logger import get_logger
+logger = get_logger(__name__)
 
 DEBUG_LOCKS = False
 
 
-# Define a direct print function for critical logs that must be visible in all processes
+# Define a direct log function for critical logs that must be visible in all processes
 def direct_log(message, enable_output: bool = True, level: str = "DEBUG"):
     """
-    Log a message directly to stderr to ensure visibility in all processes,
-    including the Gunicorn master process.
+    Log a message directly to root logger to ensure visibility in all processes,
+    using the unified logging format.
 
     Args:
         message: The message to log
-        level: Log level for message (control the visibility of the message by comparing with the current logger level)
-        enable_output: Enable or disable log message (Force to turn off the message,)
+        level: Log level for message
+        enable_output: Enable or disable log message
     """
     if not enable_output:
         return
 
-    # Get the current logger level from the lightrag logger
-    try:
-        from lightrag.utils import logger
-
-        current_level = logger.getEffectiveLevel()
-    except ImportError:
-        # Fallback if lightrag.utils is not available
-        current_level = 20  # INFO
-
-    # Convert string level to numeric level for comparison
+    # Convert string level to numeric level
     level_mapping = {
-        "DEBUG": 10,  # DEBUG
-        "INFO": 20,  # INFO
-        "WARNING": 30,  # WARNING
-        "ERROR": 40,  # ERROR
-        "CRITICAL": 50,  # CRITICAL
+        "DEBUG": logging.DEBUG,
+        "INFO": logging.INFO,
+        "WARNING": logging.WARNING,
+        "ERROR": logging.ERROR,
+        "CRITICAL": logging.CRITICAL,
     }
-    message_level = level_mapping.get(level.upper(), logging.DEBUG)
-
-    if message_level >= current_level:
-        print(f"{level}: {message}", file=sys.stderr, flush=True)
+    numeric_level = level_mapping.get(level.upper(), logging.DEBUG)
+    
+    # Use the logger defined in this module
+    logger.log(numeric_level, message)
 
 
 T = TypeVar("T")

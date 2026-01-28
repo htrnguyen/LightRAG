@@ -25,10 +25,9 @@ from tenacity import (
     retry_if_exception_type,
 )
 
-from lightrag.utils import (
-    wrap_embedding_func_with_attrs,
-    logger,
-)
+from lightrag.utils import wrap_embedding_func_with_attrs
+from lightrag.logger import get_logger
+logger = get_logger(__name__)
 
 from lightrag.types import GPTKeywordExtractionFormat
 

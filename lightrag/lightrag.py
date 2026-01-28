@@ -107,11 +107,12 @@ from lightrag.utils import (
     check_storage_env_vars,
     generate_track_id,
     convert_to_user_format,
-    logger,
     subtract_source_ids,
     make_relation_chunk_key,
     normalize_source_ids_limit_method,
 )
+from lightrag.logger import get_logger
+logger = get_logger(__name__)
 from lightrag.types import KnowledgeGraph
 from dotenv import load_dotenv
 

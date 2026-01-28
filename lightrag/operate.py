@@ -13,7 +13,6 @@ from lightrag.exceptions import (
     ChunkTokenLimitExceededError,
 )
 from lightrag.utils import (
-    logger,
     compute_mdhash_id,
     Tokenizer,
     is_float_regex,
@@ -40,6 +39,8 @@ from lightrag.utils import (
     merge_source_ids,
     make_relation_chunk_key,
 )
+from lightrag.logger import get_logger
+logger = get_logger(__name__)
 from lightrag.base import (
     BaseGraphStorage,
     BaseKVStorage,

@@ -47,43 +47,9 @@ from lightrag.constants import (
 _SURROGATE_PATTERN = re.compile(r"[\uD800-\uDFFF\uFFFE\uFFFF]")
 
 
-class SafeStreamHandler(logging.StreamHandler):
-    """StreamHandler that gracefully handles closed streams during shutdown.
-
-    This handler prevents "ValueError: I/O operation on closed file" errors
-    that can occur when pytest or other test frameworks close stdout/stderr
-    before Python's logging cleanup runs.
-    """
-
-    def flush(self):
-        """Flush the stream, ignoring errors if the stream is closed."""
-        try:
-            super().flush()
-        except (ValueError, OSError):
-            # Stream is closed or otherwise unavailable, silently ignore
-            pass
-
-    def close(self):
-        """Close the handler, ignoring errors if the stream is already closed."""
-        try:
-            super().close()
-        except (ValueError, OSError):
-            # Stream is closed or otherwise unavailable, silently ignore
-            pass
-
-
-# Initialize logger with basic configuration
-logger = logging.getLogger("lightrag")
-logger.propagate = False  # prevent log message send to root logger
-logger.setLevel(logging.INFO)
-
-# Add console handler if no handlers exist
-if not logger.handlers:
-    console_handler = SafeStreamHandler()
-    console_handler.setLevel(logging.INFO)
-    formatter = logging.Formatter("%(levelname)s: %(message)s")
-    console_handler.setFormatter(formatter)
-    logger.addHandler(console_handler)
+# Initialize logger using unified configuration
+from lightrag.logger import get_logger
+logger = get_logger(__name__)
 
 # Set httpx logging level to WARNING
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -322,7 +288,7 @@ def setup_logger(
     log_file_path: str | None = None,
     enable_file_logging: bool = True,
 ):
-    """Set up a logger with console and optionally file handlers
+    """Set up a logger with console and optionally file handlers (DEPRECATED: use setup_logging instead)
 
     Args:
         logger_name: Name of the logger to set up
@@ -331,11 +297,8 @@ def setup_logger(
         log_file_path: Path to the log file. If None and file logging is enabled, defaults to lightrag.log in LOG_DIR or cwd
         enable_file_logging: Whether to enable logging to a file (defaults to True)
     """
-    # Configure formatters
-    detailed_formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    )
-    simple_formatter = logging.Formatter("%(levelname)s: %(message)s")
+    from lightrag.logger import UnifiedFormatter, SafeStreamHandler
+    formatter = UnifiedFormatter()
 
     logger_instance = logging.getLogger(logger_name)
     logger_instance.setLevel(level)
@@ -343,8 +306,8 @@ def setup_logger(
     logger_instance.propagate = False
 
     # Add console handler with safe stream handling
-    console_handler = SafeStreamHandler()
-    console_handler.setFormatter(simple_formatter)
+    console_handler = SafeStreamHandler(sys.stdout)
+    console_handler.setFormatter(formatter)
     console_handler.setLevel(level)
     logger_instance.addHandler(console_handler)
 
@@ -372,7 +335,7 @@ def setup_logger(
                 backupCount=log_backup_count,
                 encoding="utf-8",
             )
-            file_handler.setFormatter(detailed_formatter)
+            file_handler.setFormatter(formatter)
             file_handler.setLevel(level)
             logger_instance.addHandler(file_handler)
         except PermissionError as e:

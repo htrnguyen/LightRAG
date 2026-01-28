@@ -25,9 +25,10 @@ from lightrag.api import __api_version__
 
 import numpy as np
 from typing import Optional, Union
+from lightrag.logger import get_logger
+logger = get_logger(__name__)
 from lightrag.utils import (
     wrap_embedding_func_with_attrs,
-    logger,
 )
 
 

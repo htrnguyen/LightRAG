@@ -7,9 +7,10 @@ from lightrag.base import (
 )
 from lightrag.utils import (
     load_json,
-    logger,
     write_json,
 )
+from lightrag.logger import get_logger
+logger = get_logger(__name__)
 from lightrag.exceptions import StorageNotInitializedError
 from .shared_storage import (
     get_namespace_data,

@@ -8,9 +8,10 @@ import numpy as np
 import time
 
 from lightrag.utils import (
-    logger,
     compute_mdhash_id,
 )
+from lightrag.logger import get_logger
+logger = get_logger(__name__)
 
 from lightrag.base import BaseVectorStorage
 from nano_vectordb import NanoVectorDB

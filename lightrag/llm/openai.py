@@ -22,10 +22,11 @@ from tenacity import (
     wait_exponential,
     retry_if_exception_type,
 )
+from lightrag.logger import get_logger
+logger = get_logger(__name__)
 from lightrag.utils import (
     wrap_embedding_func_with_attrs,
     safe_unicode_decode,
-    logger,
 )
 
 from lightrag.types import GPTKeywordExtractionFormat

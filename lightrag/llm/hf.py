@@ -27,6 +27,8 @@ from lightrag.exceptions import (
 import torch
 import numpy as np
 from lightrag.utils import wrap_embedding_func_with_attrs
+from lightrag.logger import get_logger
+logger = get_logger(__name__)
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -61,7 +63,6 @@ async def hf_model_if_cache(
     **kwargs,
 ) -> str:
     if enable_cot:
-        from lightrag.utils import logger
 
         logger.debug(
             "enable_cot=True is not supported for Hugging Face local models and will be ignored."

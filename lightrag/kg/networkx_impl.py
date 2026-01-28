@@ -3,7 +3,8 @@ from dataclasses import dataclass
 from typing import final
 
 from lightrag.types import KnowledgeGraph, KnowledgeGraphNode, KnowledgeGraphEdge
-from lightrag.utils import logger
+from lightrag.logger import get_logger
+logger = get_logger(__name__)
 from lightrag.base import BaseGraphStorage
 import networkx as nx
 from .shared_storage import (
