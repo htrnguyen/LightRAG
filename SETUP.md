@@ -25,7 +25,7 @@ Run these commands from the project root directory (`~/work/minhbc/LightRAG`):
 
 ### Build the Image
 
-Build the Docker image with the project-specific name (`lightrag-minhbc`):
+Build the Docker image with the project-specific name (`lightrag`):
 
 ```bash
 docker compose build
@@ -52,13 +52,13 @@ docker compose down
 Thanks to the unified logging system and `FORCE_COLOR=1`, the logs are color-coded for easy reading:
 
 ```bash
-docker compose logs -f lightrag-minhbc
+docker compose logs -f lightrag
 ```
 
 ### Check Container Status
 
 ```bash
-docker ps | grep lightrag-minhbc
+docker ps | grep lightrag
 ```
 
 ## 4. Resource Management
@@ -70,14 +70,6 @@ docker ps | grep lightrag-minhbc
   - API Docs: `http://<server-ip>:18621/docs`
 
 ## 5. Maintenance
-
-### Scan for New Files
-
-If you add new files to the `inputs` folder, use the "Scan" button in the WebUI or call the API:
-
-```bash
-curl -X POST http://localhost:18621/documents/scan -H "X-API-Key: your_secure_api_key"
-```
 
 ### Rebuild and Restart
 
