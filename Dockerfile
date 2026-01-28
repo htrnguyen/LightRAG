@@ -11,7 +11,7 @@ COPY lightrag_webui/ ./lightrag_webui/
 # Build frontend assets for inclusion in the API package
 RUN --mount=type=cache,target=/root/.bun/install/cache \
     cd lightrag_webui \
-    && bun install --frozen-lockfile \
+    && bun install \
     && bun run build
 
 # Python build stage - using uv for faster package installation
@@ -26,9 +26,9 @@ WORKDIR /app
 # Install system deps (Rust is required by some wheels)
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        curl \
-        build-essential \
-        pkg-config \
+    curl \
+    build-essential \
+    pkg-config \
     && rm -rf /var/lib/apt/lists/* \
     && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
@@ -42,9 +42,9 @@ COPY pyproject.toml .
 COPY setup.py .
 COPY uv.lock .
 
-# Install base, API, and offline extras without the project to improve caching
+# Install base, API extras without the project to improve caching
 RUN --mount=type=cache,target=/root/.local/share/uv \
-    uv sync --frozen --no-dev --extra api --extra offline --no-install-project --no-editable
+    uv sync --frozen --no-dev --extra api --no-install-project --no-editable
 
 # Copy project sources after dependency layer
 COPY lightrag/ ./lightrag/
@@ -54,8 +54,9 @@ COPY --from=frontend-builder /app/lightrag/api/webui ./lightrag/api/webui
 
 # Sync project in non-editable mode and ensure pip is available for runtime installs
 RUN --mount=type=cache,target=/root/.local/share/uv \
-    uv sync --frozen --no-dev --extra api --extra offline --no-editable \
-    && /app/.venv/bin/python -m ensurepip --upgrade
+    uv sync --frozen --no-dev --extra api --no-editable \
+    && /app/.venv/bin/python -m ensurepip --upgrade \
+    && uv pip install faiss-cpu
 
 # Prepare offline cache directory and pre-populate tiktoken data
 # Use uv run to execute commands from the virtual environment
@@ -73,6 +74,11 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 ENV UV_SYSTEM_PYTHON=1
 
+# Install system dependencies needed for faiss
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy installed packages and application code
 COPY --from=builder /root/.local /root/.local
 COPY --from=builder /app/.venv /app/.venv
@@ -87,8 +93,9 @@ ENV PATH=/app/.venv/bin:/root/.local/bin:$PATH
 # Install dependencies with uv sync (uses locked versions from uv.lock)
 # And ensure pip is available for runtime installs
 RUN --mount=type=cache,target=/root/.local/share/uv \
-    uv sync --frozen --no-dev --extra api --extra offline --no-editable \
-    && /app/.venv/bin/python -m ensurepip --upgrade
+    uv sync --frozen --no-dev --extra api --no-editable \
+    && /app/.venv/bin/python -m ensurepip --upgrade \
+    && uv pip install faiss-cpu
 
 # Create persistent data directories AFTER package installation
 RUN mkdir -p /app/data/rag_storage /app/data/inputs /app/data/tiktoken

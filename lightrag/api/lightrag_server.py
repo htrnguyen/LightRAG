@@ -51,7 +51,6 @@ from lightrag.api.routers.document_routes import (
 )
 from lightrag.api.routers.query_routes import create_query_routes
 from lightrag.api.routers.graph_routes import create_graph_routes
-from lightrag.api.routers.ollama_api import OllamaAPI
 
 from lightrag.utils import logger, set_verbose_debug
 from lightrag.kg.shared_storage import (
@@ -61,8 +60,6 @@ from lightrag.kg.shared_storage import (
     cleanup_keyed_lock,
     finalize_share_data,
 )
-from fastapi.security import OAuth2PasswordRequestForm
-from lightrag.api.auth import auth_handler
 
 # use the .env that is inside the current folder
 # allows to use different .env file for each lightrag instance
@@ -76,9 +73,6 @@ webui_description = os.getenv("WEBUI_DESCRIPTION")
 # Initialize config parser
 config = configparser.ConfigParser()
 config.read("config.ini")
-
-# Global authentication configuration
-auth_configured = bool(auth_handler.accounts)
 
 
 class LLMConfigCache:
@@ -1098,10 +1092,6 @@ def create_app(args):
     app.include_router(create_query_routes(rag, api_key, args.top_k))
     app.include_router(create_graph_routes(rag, api_key))
 
-    # Add Ollama API routes
-    ollama_api = OllamaAPI(rag, top_k=args.top_k, api_key=api_key)
-    app.include_router(ollama_api.router, prefix="/api")
-
     # Custom Swagger UI endpoint for offline support
     @app.get("/docs", include_in_schema=False)
     async def custom_swagger_ui_html():
@@ -1131,63 +1121,11 @@ def create_app(args):
 
     @app.get("/auth-status")
     async def get_auth_status():
-        """Get authentication status and guest token if auth is not configured"""
-
-        if not auth_handler.accounts:
-            # Authentication not configured, return guest token
-            guest_token = auth_handler.create_token(
-                username="guest", role="guest", metadata={"auth_mode": "disabled"}
-            )
-            return {
-                "auth_configured": False,
-                "access_token": guest_token,
-                "token_type": "bearer",
-                "auth_mode": "disabled",
-                "message": "Authentication is disabled. Using guest access.",
-                "core_version": core_version,
-                "api_version": api_version_display,
-                "webui_title": webui_title,
-                "webui_description": webui_description,
-            }
-
+        """Get authentication status - always returns disabled"""
         return {
-            "auth_configured": True,
-            "auth_mode": "enabled",
-            "core_version": core_version,
-            "api_version": api_version_display,
-            "webui_title": webui_title,
-            "webui_description": webui_description,
-        }
-
-    @app.post("/login")
-    async def login(form_data: OAuth2PasswordRequestForm = Depends()):
-        if not auth_handler.accounts:
-            # Authentication not configured, return guest token
-            guest_token = auth_handler.create_token(
-                username="guest", role="guest", metadata={"auth_mode": "disabled"}
-            )
-            return {
-                "access_token": guest_token,
-                "token_type": "bearer",
-                "auth_mode": "disabled",
-                "message": "Authentication is disabled. Using guest access.",
-                "core_version": core_version,
-                "api_version": api_version_display,
-                "webui_title": webui_title,
-                "webui_description": webui_description,
-            }
-        username = form_data.username
-        if auth_handler.accounts.get(username) != form_data.password:
-            raise HTTPException(status_code=401, detail="Incorrect credentials")
-
-        # Regular user login
-        user_token = auth_handler.create_token(
-            username=username, role="user", metadata={"auth_mode": "enabled"}
-        )
-        return {
-            "access_token": user_token,
-            "token_type": "bearer",
-            "auth_mode": "enabled",
+            "auth_configured": False,
+            "auth_mode": "disabled",
+            "message": "Authentication is disabled.",
             "core_version": core_version,
             "api_version": api_version_display,
             "webui_title": webui_title,
@@ -1238,10 +1176,7 @@ def create_app(args):
                 "pipeline_status", workspace=workspace
             )
 
-            if not auth_configured:
-                auth_mode = "disabled"
-            else:
-                auth_mode = "enabled"
+            auth_mode = "disabled"
 
             # Cleanup expired keyed locks and get status
             keyed_lock_info = cleanup_keyed_lock()

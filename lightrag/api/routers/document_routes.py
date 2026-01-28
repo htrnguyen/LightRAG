@@ -129,31 +129,7 @@ def sanitize_filename(filename: str, input_dir: Path) -> str:
     return clean_name
 
 
-class ScanResponse(BaseModel):
-    """Response model for document scanning operation
-
-    Attributes:
-        status: Status of the scanning operation
-        message: Optional message with additional details
-        track_id: Tracking ID for monitoring scanning progress
-    """
-
-    status: Literal["scanning_started"] = Field(
-        description="Status of the scanning operation"
-    )
-    message: Optional[str] = Field(
-        default=None, description="Additional details about the scanning operation"
-    )
-    track_id: str = Field(description="Tracking ID for monitoring scanning progress")
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "status": "scanning_started",
-                "message": "Scanning process has been initiated in the background",
-                "track_id": "scan_20250729_170612_abc123",
-            }
-        }
+# ScanResponse model removed
 
 
 class ReprocessResponse(BaseModel):
@@ -467,70 +443,7 @@ class DocStatusResponse(BaseModel):
         }
 
 
-class DocsStatusesResponse(BaseModel):
-    """Response model for document statuses
-
-    Attributes:
-        statuses: Dictionary mapping document status to lists of document status responses
-    """
-
-    statuses: Dict[DocStatus, List[DocStatusResponse]] = Field(
-        default_factory=dict,
-        description="Dictionary mapping document status to lists of document status responses",
-    )
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "statuses": {
-                    "PENDING": [
-                        {
-                            "id": "doc_123",
-                            "content_summary": "Pending document",
-                            "content_length": 5000,
-                            "status": "pending",
-                            "created_at": "2025-03-31T10:00:00",
-                            "updated_at": "2025-03-31T10:00:00",
-                            "track_id": "upload_20250331_100000_abc123",
-                            "chunks_count": None,
-                            "error": None,
-                            "metadata": None,
-                            "file_path": "pending_doc.pdf",
-                        }
-                    ],
-                    "PREPROCESSED": [
-                        {
-                            "id": "doc_789",
-                            "content_summary": "Document pending final indexing",
-                            "content_length": 7200,
-                            "status": "preprocessed",
-                            "created_at": "2025-03-31T09:30:00",
-                            "updated_at": "2025-03-31T09:35:00",
-                            "track_id": "upload_20250331_093000_xyz789",
-                            "chunks_count": 10,
-                            "error": None,
-                            "metadata": None,
-                            "file_path": "preprocessed_doc.pdf",
-                        }
-                    ],
-                    "PROCESSED": [
-                        {
-                            "id": "doc_456",
-                            "content_summary": "Processed document",
-                            "content_length": 8000,
-                            "status": "processed",
-                            "created_at": "2025-03-31T09:00:00",
-                            "updated_at": "2025-03-31T09:05:00",
-                            "track_id": "insert_20250331_090000_def456",
-                            "chunks_count": 8,
-                            "error": None,
-                            "metadata": {"author": "John Doe"},
-                            "file_path": "processed_doc.pdf",
-                        }
-                    ],
-                }
-            }
-        }
+# DocsStatusesResponse model removed
 
 
 class TrackStatusResponse(BaseModel):
@@ -2045,30 +1958,7 @@ def create_document_routes(
     # Create combined auth dependency for document routes
     combined_auth = get_combined_auth_dependency(api_key)
 
-    @router.post(
-        "/scan", response_model=ScanResponse, dependencies=[Depends(combined_auth)]
-    )
-    async def scan_for_new_documents(background_tasks: BackgroundTasks):
-        """
-        Trigger the scanning process for new documents.
-
-        This endpoint initiates a background task that scans the input directory for new documents
-        and processes them. If a scanning process is already running, it returns a status indicating
-        that fact.
-
-        Returns:
-            ScanResponse: A response object containing the scanning status and track_id
-        """
-        # Generate track_id with "scan" prefix for scanning operation
-        track_id = generate_track_id("scan")
-
-        # Start the scanning process in the background with track_id
-        background_tasks.add_task(run_scanning_process, rag, doc_manager, track_id)
-        return ScanResponse(
-            status="scanning_started",
-            message="Scanning process has been initiated in the background",
-            track_id=track_id,
-        )
+    # /scan endpoint removed
 
     @router.post(
         "/upload", response_model=InsertResponse, dependencies=[Depends(combined_auth)]
@@ -2693,107 +2583,7 @@ def create_document_routes(
             logger.error(traceback.format_exc())
             raise HTTPException(status_code=500, detail=str(e))
 
-    # TODO: Deprecated, use /documents/paginated instead
-    @router.get(
-        "", response_model=DocsStatusesResponse, dependencies=[Depends(combined_auth)]
-    )
-    async def documents() -> DocsStatusesResponse:
-        """
-        Get the status of all documents in the system. This endpoint is deprecated; use /documents/paginated instead.
-        To prevent excessive resource consumption, a maximum of 1,000 records is returned.
-
-        This endpoint retrieves the current status of all documents, grouped by their
-        processing status (PENDING, PROCESSING, PREPROCESSED, PROCESSED, FAILED). The results are
-        limited to 1000 total documents with fair distribution across all statuses.
-
-        Returns:
-            DocsStatusesResponse: A response object containing a dictionary where keys are
-                                DocStatus values and values are lists of DocStatusResponse
-                                objects representing documents in each status category.
-                                Maximum 1000 documents total will be returned.
-
-        Raises:
-            HTTPException: If an error occurs while retrieving document statuses (500).
-        """
-        try:
-            statuses = (
-                DocStatus.PENDING,
-                DocStatus.PROCESSING,
-                DocStatus.PREPROCESSED,
-                DocStatus.PROCESSED,
-                DocStatus.FAILED,
-            )
-
-            tasks = [rag.get_docs_by_status(status) for status in statuses]
-            results: List[Dict[str, DocProcessingStatus]] = await asyncio.gather(*tasks)
-
-            response = DocsStatusesResponse()
-            total_documents = 0
-            max_documents = 1000
-
-            # Convert results to lists for easier processing
-            status_documents = []
-            for idx, result in enumerate(results):
-                status = statuses[idx]
-                docs_list = []
-                for doc_id, doc_status in result.items():
-                    docs_list.append((doc_id, doc_status))
-                status_documents.append((status, docs_list))
-
-            # Fair distribution: round-robin across statuses
-            status_indices = [0] * len(
-                status_documents
-            )  # Track current index for each status
-            current_status_idx = 0
-
-            while total_documents < max_documents:
-                # Check if we have any documents left to process
-                has_remaining = False
-                for status_idx, (status, docs_list) in enumerate(status_documents):
-                    if status_indices[status_idx] < len(docs_list):
-                        has_remaining = True
-                        break
-
-                if not has_remaining:
-                    break
-
-                # Try to get a document from the current status
-                status, docs_list = status_documents[current_status_idx]
-                current_index = status_indices[current_status_idx]
-
-                if current_index < len(docs_list):
-                    doc_id, doc_status = docs_list[current_index]
-
-                    if status not in response.statuses:
-                        response.statuses[status] = []
-
-                    response.statuses[status].append(
-                        DocStatusResponse(
-                            id=doc_id,
-                            content_summary=doc_status.content_summary,
-                            content_length=doc_status.content_length,
-                            status=doc_status.status,
-                            created_at=format_datetime(doc_status.created_at),
-                            updated_at=format_datetime(doc_status.updated_at),
-                            track_id=doc_status.track_id,
-                            chunks_count=doc_status.chunks_count,
-                            error_msg=doc_status.error_msg,
-                            metadata=doc_status.metadata,
-                            file_path=doc_status.file_path,
-                        )
-                    )
-
-                    status_indices[current_status_idx] += 1
-                    total_documents += 1
-
-                # Move to next status (round-robin)
-                current_status_idx = (current_status_idx + 1) % len(status_documents)
-
-            return response
-        except Exception as e:
-            logger.error(f"Error GET /documents: {str(e)}")
-            logger.error(traceback.format_exc())
-            raise HTTPException(status_code=500, detail=str(e))
+    # /documents endpoint (deprecated) removed
 
     class DeleteDocByIdResponse(BaseModel):
         """Response model for single document deletion operation."""

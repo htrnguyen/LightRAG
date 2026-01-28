@@ -189,10 +189,7 @@ const getUsernameFromToken = (token: string): string | null => {
   return payload.sub || null;
 };
 
-const isGuestToken = (token: string): boolean => {
-  const payload = parseTokenPayload(token);
-  return payload.role === 'guest';
-};
+
 
 const getTokenExpiresAt = (token: string): number | null => {
   const payload = parseTokenPayload(token);
@@ -206,26 +203,13 @@ const initAuthState = (): { isAuthenticated: boolean; isGuestMode: boolean; core
   const webuiTitle = localStorage.getItem('LIGHTRAG-WEBUI-TITLE');
   const webuiDescription = localStorage.getItem('LIGHTRAG-WEBUI-DESCRIPTION');
   const lastTokenRenewal = localStorage.getItem('LIGHTRAG-LAST-TOKEN-RENEWAL');
-  const username = token ? getUsernameFromToken(token) : null;
+  const username = token ? getUsernameFromToken(token) : 'LightRAG User';
   const tokenExpiresAt = token ? getTokenExpiresAt(token) : null;
 
-  if (!token) {
-    return {
-      isAuthenticated: false,
-      isGuestMode: false,
-      coreVersion: coreVersion,
-      apiVersion: apiVersion,
-      username: null,
-      webuiTitle: webuiTitle,
-      webuiDescription: webuiDescription,
-      lastTokenRenewal: null,
-      tokenExpiresAt: null,
-    };
-  }
-
+  // Always return authenticated = true for Lite version
   return {
     isAuthenticated: true,
-    isGuestMode: isGuestToken(token),
+    isGuestMode: false,
     coreVersion: coreVersion,
     apiVersion: apiVersion,
     username: username,
@@ -251,7 +235,7 @@ export const useAuthStore = create<AuthState>(set => {
     lastTokenRenewal: initialState.lastTokenRenewal,
     tokenExpiresAt: initialState.tokenExpiresAt,
 
-    login: (token, isGuest = false, coreVersion = null, apiVersion = null, webuiTitle = null, webuiDescription = null) => {
+    login: (token: string, isGuest: boolean = false, coreVersion: string | null = null, apiVersion: string | null = null, webuiTitle: string | null = null, webuiDescription: string | null = null) => {
       localStorage.setItem('LIGHTRAG-API-TOKEN', token);
 
       if (coreVersion) {
@@ -316,7 +300,7 @@ export const useAuthStore = create<AuthState>(set => {
       });
     },
 
-    setVersion: (coreVersion, apiVersion) => {
+    setVersion: (coreVersion: string | null, apiVersion: string | null) => {
       // Update localStorage
       if (coreVersion) {
         localStorage.setItem('LIGHTRAG-CORE-VERSION', coreVersion);
@@ -332,7 +316,7 @@ export const useAuthStore = create<AuthState>(set => {
       });
     },
 
-    setCustomTitle: (webuiTitle, webuiDescription) => {
+    setCustomTitle: (webuiTitle: string | null, webuiDescription: string | null) => {
       // Update localStorage
       if (webuiTitle) {
         localStorage.setItem('LIGHTRAG-WEBUI-TITLE', webuiTitle);
@@ -353,7 +337,7 @@ export const useAuthStore = create<AuthState>(set => {
       });
     },
 
-    setTokenRenewal: (renewalTime, expiresAt) => {
+    setTokenRenewal: (renewalTime: number, expiresAt: number) => {
       const formattedTime = formatTimestampToLocalString(renewalTime);
 
       // Update localStorage with human-readable format

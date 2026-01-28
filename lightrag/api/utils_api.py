@@ -17,27 +17,9 @@ from lightrag.constants import (
 from fastapi import HTTPException, Security, Request, Response, status
 from fastapi.security import APIKeyHeader, OAuth2PasswordBearer
 from starlette.status import HTTP_403_FORBIDDEN
-from .auth import auth_handler
 from .config import ollama_server_infos, global_args, get_env_value
 
 logger = logging.getLogger("lightrag")
-
-# ========== Token Renewal Rate Limiting ==========
-# Cache to track last renewal time per user (username as key)
-# Format: {username: last_renewal_timestamp}
-_token_renewal_cache: dict[str, float] = {}
-_RENEWAL_MIN_INTERVAL = 60  # Minimum 60 seconds between renewals for same user
-
-# ========== Token Renewal Path Exclusions ==========
-# Paths that should NOT trigger token auto-renewal
-# - /health: Health check endpoint, no login required
-# - /documents/paginated: Client polls this frequently (5-30s), renewal not needed
-# - /documents/pipeline_status: Client polls this very frequently (2s), renewal not needed
-_TOKEN_RENEWAL_SKIP_PATHS = [
-    "/health",
-    "/documents/paginated",
-    "/documents/pipeline_status",
-]
 
 
 def check_env_file():
@@ -58,208 +40,15 @@ def check_env_file():
     return True
 
 
-# Get whitelist paths from global_args, only once during initialization
-whitelist_paths = global_args.whitelist_paths.split(",")
-
-# Pre-compile path matching patterns
-whitelist_patterns: List[Tuple[str, bool]] = []
-for path in whitelist_paths:
-    path = path.strip()
-    if path:
-        # If path ends with /*, match all paths with that prefix
-        if path.endswith("/*"):
-            prefix = path[:-2]
-            whitelist_patterns.append((prefix, True))  # (prefix, is_prefix_match)
-        else:
-            whitelist_patterns.append((path, False))  # (exact_path, is_prefix_match)
-
-# Global authentication configuration
-auth_configured = bool(auth_handler.accounts)
-
-
 def get_combined_auth_dependency(api_key: Optional[str] = None):
     """
-    Create a combined authentication dependency that implements authentication logic
-    based on API key, OAuth2 token, and whitelist paths.
-
-    Args:
-        api_key (Optional[str]): API key for validation
-
-    Returns:
-        Callable: A dependency function that implements the authentication logic
+    Stub function - authentication disabled.
+    Returns a dependency that allows all requests.
     """
-    # Use global whitelist_patterns and auth_configured variables
-    # whitelist_patterns and auth_configured are already initialized at module level
-
-    # Only calculate api_key_configured as it depends on the function parameter
-    api_key_configured = bool(api_key)
-
-    # Create security dependencies with proper descriptions for Swagger UI
-    oauth2_scheme = OAuth2PasswordBearer(
-        tokenUrl="login", auto_error=False, description="OAuth2 Password Authentication"
-    )
-
-    # If API key is configured, create an API key header security
-    api_key_header = None
-    if api_key_configured:
-        api_key_header = APIKeyHeader(
-            name="X-API-Key", auto_error=False, description="API Key Authentication"
-        )
-
-    async def combined_dependency(
-        request: Request,
-        response: Response,  # Added: needed to return new token via response header
-        token: str = Security(oauth2_scheme),
-        api_key_header_value: Optional[str] = None
-        if api_key_header is None
-        else Security(api_key_header),
-    ):
-        # 1. Check if path is in whitelist
-        path = request.url.path
-        for pattern, is_prefix in whitelist_patterns:
-            if (is_prefix and path.startswith(pattern)) or (
-                not is_prefix and path == pattern
-            ):
-                return  # Whitelist path, allow access
-
-        # 2. Validate token first if provided in the request (Ensure 401 error if token is invalid)
-        if token:
-            try:
-                token_info = auth_handler.validate_token(token)
-
-                # ========== Token Auto-Renewal Logic ==========
-                from lightrag.api.config import global_args
-                from datetime import datetime
-
-                if global_args.token_auto_renew:
-                    # Check if current path should skip token renewal
-                    skip_renewal = any(
-                        path == skip_path or path.startswith(skip_path + "/")
-                        for skip_path in _TOKEN_RENEWAL_SKIP_PATHS
-                    )
-
-                    if skip_renewal:
-                        logger.debug(f"Token auto-renewal skipped for path: {path}")
-                    else:
-                        try:
-                            expire_time = token_info.get("exp")
-                            if expire_time:
-                                # Calculate remaining time ratio
-                                now = datetime.utcnow()
-                                remaining_seconds = (expire_time - now).total_seconds()
-
-                                # Get original token expiration duration
-                                role = token_info.get("role", "user")
-                                total_hours = (
-                                    auth_handler.guest_expire_hours
-                                    if role == "guest"
-                                    else auth_handler.expire_hours
-                                )
-                                total_seconds = total_hours * 3600
-
-                                # Issue new token if remaining time < threshold
-                                if (
-                                    remaining_seconds
-                                    < total_seconds * global_args.token_renew_threshold
-                                ):
-                                    # ========== Rate Limiting Check ==========
-                                    username = token_info["username"]
-                                    current_time = time.time()
-                                    last_renewal = _token_renewal_cache.get(username, 0)
-                                    time_since_last_renewal = (
-                                        current_time - last_renewal
-                                    )
-
-                                    # Only renew if enough time has passed since last renewal
-                                    if time_since_last_renewal >= _RENEWAL_MIN_INTERVAL:
-                                        new_token = auth_handler.create_token(
-                                            username=username,
-                                            role=role,
-                                            metadata=token_info.get("metadata", {}),
-                                        )
-                                        # Return new token via response header
-                                        response.headers["X-New-Token"] = new_token
-
-                                        # Update renewal cache
-                                        _token_renewal_cache[username] = current_time
-
-                                        # Optional: log renewal
-                                        logger.info(
-                                            f"Token auto-renewed for user {username} "
-                                            f"(role: {role}, remaining: {remaining_seconds:.0f}s)"
-                                        )
-                                    else:
-                                        # Log skip due to rate limit
-                                        logger.debug(
-                                            f"Token renewal skipped for {username} "
-                                            f"(rate limit: last renewal {time_since_last_renewal:.0f}s ago)"
-                                        )
-                                    # ========== End of Rate Limiting Check ==========
-                        except Exception as e:
-                            # Renewal failure should not affect normal request, just log
-                            logger.warning(f"Token auto-renew failed: {e}")
-                # ========== End of Token Auto-Renewal Logic ==========
-
-                # Accept guest token if no auth is configured
-                if not auth_configured and token_info.get("role") == "guest":
-                    return
-                # Accept non-guest token if auth is configured
-                if auth_configured and token_info.get("role") != "guest":
-                    return
-
-                # Token validation failed, immediately return 401 error
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid token. Please login again.",
-                )
-            except HTTPException as e:
-                # If already a 401 error, re-raise it
-                if e.status_code == status.HTTP_401_UNAUTHORIZED:
-                    raise
-                # For other exceptions, continue processing
-
-        # 3. Acept all request if no API protection needed
-        if not auth_configured and not api_key_configured:
-            return
-
-        # 4. Validate API key if provided and API-Key authentication is configured
-        if (
-            api_key_configured
-            and api_key_header_value
-            and api_key_header_value == api_key
-        ):
-            return  # API key validation successful
-
-        ### Authentication failed ####
-
-        # if password authentication is configured but not provided, ensure 401 error if auth_configured
-        if auth_configured and not token:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="No credentials provided. Please login.",
-            )
-
-        # if api key is provided but validation failed
-        if api_key_header_value:
-            raise HTTPException(
-                status_code=HTTP_403_FORBIDDEN,
-                detail="Invalid API Key",
-            )
-
-        # if api_key_configured but not provided
-        if api_key_configured and not api_key_header_value:
-            raise HTTPException(
-                status_code=HTTP_403_FORBIDDEN,
-                detail="API Key required",
-            )
-
-        # Otherwise: refuse access and return 403 error
-        raise HTTPException(
-            status_code=HTTP_403_FORBIDDEN,
-            detail="API Key required or login authentication required.",
-        )
-
-    return combined_dependency
+    async def no_auth_dependency():
+        return  # Allow all requests
+    
+    return no_auth_dependency
 
 
 def display_splash_screen(args: argparse.Namespace) -> None:
